@@ -1,0 +1,59 @@
+#!/bin/bash
+
+#
+# Location of a run stamp for "run once" service
+#
+ONCE_STAMP="$TA_DATA_DIR/once/$2"
+
+#
+# Let this script continue if user interrupts the application inside
+#
+trap '' SIGINT SIGQUIT
+
+log="$1"
+window="$2"
+tmux_window_id=$(tmux list-panes -t "$TMUX_PANE" -F "#{window_id}")
+shift 2
+
+while ! [ -f "$ONCE_STAMP" ]; do
+  clear
+  echo "Current directory is $PWD"
+  echo "Running $*"
+  echo
+
+  #
+  # Run the service and store its logs in a central location
+  #
+  /bin/bash -xe "$@" 2>&1 | tee -a "$TA_LOG_DIR/$log.log"
+  C=${PIPESTATUS[0]}
+
+  if [[ $C -eq 0 ]]; then
+    touch "$ONCE_STAMP"
+
+    #
+    # Mark the tmux window on successful exit
+    #
+    tmux rename-window -t "$tmux_window_id" "$window""#[fg=black,bg=yellow][done]#[fg=default,bg=default]"
+
+    # Workaround for tmux 2.9a which doesn't support set-option -p
+    if ! tmux set-option -p -t "$TMUX_PANE" remain-on-exit on &>/dev/null; then
+      echo
+      echo "<<exited with code 0>>"
+      echo
+      while true; do
+        sleep 1000
+      done
+    fi
+    exit 0
+  fi
+
+  #
+  # Mark the tmux window on failure
+  #
+  tmux rename-window -t "$tmux_window_id" "$window""#[bg=red][exited]#[bg=default]"
+  echo
+  echo "<<exited with code $C>>"
+  echo
+  read -srp "Press Enter to restart"
+  tmux rename-window -t "$tmux_window_id*" "$window"
+done

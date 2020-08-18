@@ -1,0 +1,23 @@
+[entryPoints.taweb]
+address = "127.0.0.1:8080"
+
+[http.routers.backend-db]
+rule = "Path('/backend-db')"
+service = "backend-db"
+
+[http.routers.backend-files]
+rule = "Path('/backend-files')"
+service = "backend-files"
+
+[http.routers.static]
+rule = "Path('/')"
+service = "static"
+
+[http.services.backend-db.loadBalancer.servers]
+url = "http://localhost:44444"
+
+[http.services.backend-files.loadBalancer.servers]
+url = "http://localhost:44445"
+
+[http.services.static.loadBalancer.servers]
+url = "http://localhost:44446"

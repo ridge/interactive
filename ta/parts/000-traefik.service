@@ -1,0 +1,41 @@
+# -*- mode: sh -*-
+
+#
+# Preparations
+#
+# In a real application Traefik download should be done by build system, not
+# here.
+#
+
+VER=v2.2.8
+
+OSARCH=$(uname -s)-$(uname -m)
+
+case "$OSARCH" in
+  Darwin-x86_64)
+    SUFFIX=darwin_amd64;;
+  Linux-x86_64)
+    SUFFIX=linux_amd64;;
+  *)
+    echo "Unsupported OS/architecture $OSARCH"
+    exit 1;;
+esac
+
+F="$TA_RUNTIME_DIR/traefik_${VER}_$SUFFIX"
+
+if ! [ -f "$F" ]; then
+  U="https://github.com/containous/traefik/releases/download/$VER/traefik_${VER}_$SUFFIX.tar.gz"
+
+  curl -Lo "$F.tar.gz.tmp" "$U"
+  mv "$F.tar.gz.tmp" "$F.tar.gz"
+
+  tar -xOzf "$F.tar.gz" traefik > "$F.tmp"
+  mv "$F.tmp" "$F"
+  chmod 755 "$F"
+fi
+
+#
+# End of preparations
+#
+
+"$F" --configfile=../src/traefik/traefik.toml --log=true --log.level=debug
