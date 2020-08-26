@@ -1,0 +1,5 @@
+cd ../src/backend
+
+exec ta-gorun backend \
+     --listen=localhost:44444 \
+     --postgresql-url=postgres://ta:tapassword@localhost:44447/ta
