@@ -6,7 +6,7 @@ Run `cd ta && ./ta` to start test application demonstrating the shell.
 
 ## Legal
 
-Copyright Tectonic Networks, Inc.
+Copyright Tectonic Labs Ltd.
 
 Licensed under [Apache 2.0](LICENSE) license.
 
