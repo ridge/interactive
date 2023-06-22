@@ -1,8 +1,0 @@
-# -*- mode: sh -*-
-
-../src/traefik/download
-
-exec "$TA_RUNTIME_DIR/traefik" \
-     --configfile=../src/traefik/traefik.toml \
-     --log=true \
-     --log.level=debug

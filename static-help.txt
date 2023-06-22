@@ -1,0 +1,12 @@
+  Common keys:
+    Ctrl-] 0..9    Select window 0..9
+    Ctrl-] p,n     Select previous, next window
+    Ctrl-] w       Select window interactively
+    Ctrl-] [       Enter scrollback/copy mode (ESC to exit). Read `man tmux` for details.
+      Ctrl-s to search in scrollback in this mode
+    Ctrl-] d       Detach from the terminal (keep running in background)
+    Ctrl-C         Sends SIGINT. It will stop the program inside, you can run your own (e.g. under debugger).
+    Ctrl-\         Sends SIGQUIT. Use it to dump goroutines with stack traces.
+    Enter          Restart exited program again. Exited programs will be marked in status line.
+
+  This is tmux(1), so `man tmux` is useful.

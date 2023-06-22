@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -ex
+
+# A replacement for 'go run' that keeps the result code
+# See https://github.com/golang/go/blob/master/src/cmd/go/internal/run/run.go#L40
+
+name="$1"
+shift
+
+exedir="$BOX_RUNTIME_DIR/gorun/$name"
+# "$name" is repeated here to give a better observability in ps(1) et al
+exe="$exedir/$(worktree)/$name"
+
+box-gocompile "$name" "$exedir" "$exe"
+exec "$exe" "$@"

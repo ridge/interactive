@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+set -e
+
+usage() {
+  cat <<EOF
+Usage:
+
+  box             Start/attach to active Box
+  box start       Start Box, reuses existing state if it exists
+  box stop        Stop Box gracefully, but keeps the state
+
+  box destroy     Stop Box, remove state
+
+  box attach      Attach to active Box
+  box detach      Detach Box from all terminals
+  box new-window  (Advanced) Create a new window for active Box instance
+
+EOF
+  exit 2
+}
+
+#
+# tmux box design:
+#
+# A single session named "box" is created for all programs of box. "box
+# new-window" creates sessions "box-N", and they all are killed by "box stop".
+#
+
+if command -v realpath >/dev/null; then
+  BASE_DIR=$(dirname "$(dirname "$(dirname "$(realpath "${BASH_SOURCE[0]}")")")")
+else
+  # This function does not resolve symlinks, so it returns _build.*/workspace/bin/box
+  dirpath() {
+    cd "$(dirname "$1")"
+    pwd -P
+  }
+  BASE_DIR=$(dirname "$(dirname "$(dirname "$(dirpath "${BASH_SOURCE[0]}")")")")
+fi
+
+export BASE_DIR
+cd "$BASE_DIR"
+
+BOX_DIR="$BASE_DIR/_box"
+export BOX_DATA_DIR="$BOX_DIR/data"
+export BOX_LOG_DIR="$BOX_DIR/logs"
+export BOX_RUNTIME_DIR="$BOX_DIR/run"
+
+BOX_NAME_FILE=$HOME/.config/box/box-name
+export BOX_NAME=
+
+mkdir -p "$BOX_RUNTIME_DIR"
+export TMUX_TMPDIR="$BOX_RUNTIME_DIR"
+
+ensure_box_name() {
+  [ -r "$BOX_NAME_FILE" ] && BOX_NAME=$(<"$BOX_NAME_FILE")
+
+  if [ -z "$BOX_NAME" ]; then
+    local defname name
+    if [ "$USER" = ubuntu ]; then
+      defname=
+      echo -n "Enter name of the box (e.g. your account name): "
+    else
+      defname="$USER"
+      echo -n "Enter name of the box (defaults to '$defname'): "
+    fi
+
+    read -er name
+    if ! [[ $name =~ ^[a-z0-9-]{0,63}$ ]]; then
+      echo "Box name should match [a-z0-9-]{0,63}." 2>&1
+      exit 1
+    fi
+    if [ "$name" = ubuntu ]; then
+      echo "'ubuntu' is not satisfactory, use something more specific."
+      exit 1
+    fi
+
+    BOX_NAME="${name:-$defname}"
+
+    mkdir -p "$(dirname "$BOX_NAME_FILE")"
+    echo "$BOX_NAME" > "$BOX_NAME_FILE"
+  fi
+
+  if [ -z "$BOX_NAME" ]; then
+    echo "Box name is mandatory" 2>&1
+    exit 1
+  fi
+}
+
+box_running() {
+  tmux has-session -t box 2>/dev/null
+}
+
+prepare_env() {
+  ensure_box_name
+  export PATH="$PATH:$BASE_DIR/tools/box"
+}
+
+cmd_create() {
+  if box_running; then
+    echo "Box is already running"
+    exit 1
+  fi
+
+  mkdir -p "$BOX_DATA_DIR" "$BOX_LOG_DIR" "$BOX_RUNTIME_DIR"
+  mkdir -p "$BOX_DATA_DIR"/{keys,secrets,once,monitoring}
+
+  prepare_env
+
+  # Run all init pieces of Box
+  local part
+  for part in tools/box/parts/*.startup; do
+    echo "Running ${part##*/}... (startup)"
+    "$SHELL" "$part"
+  done
+
+  # This invocation creates new tmux server with environment variables
+  # created in prepare_env. See the comment in cmd_stop.
+  tmux new-session -d -s box -n help tools/box/show-help
+
+  # Default terminal type is "screen", and it does not display italics correctly
+  tmux set -s default-terminal xterm-256color
+
+  # Reassign prefix key, default Ctrl-b is used everywhere.
+  tmux set-option -g prefix "C-]"
+
+  # These are often hit accidentally, make them do the same
+  # as their analogues without second C-
+  tmux bind-key "C-d" detach-client
+  tmux bind-key "C-[" copy-mode
+  tmux bind-key "C-n" next-window
+  tmux bind-key "C-p" previous-window
+
+  # Cosmetics
+  tmux set-option -t box status-style "fg=black,bg=white"
+  tmux set-option -t box status-left ""
+  tmux set-option -t box status-right ""
+  tmux set-option -t box -g window-status-current-style "fg=white,bg=blue"
+  tmux set-option -t box -g window-status-current-format "#I:#W"
+  tmux set-option -t box -g window-status-format "#I:#W"
+  tmux set-option -t box -g window-status-separator " "
+
+  # Start all pieces of Box
+  for part in tools/box/parts/*; do
+    if [ -d "$part" ]; then
+      continue
+    fi
+    local filename=${part##*/} # filename without dir
+    case "$filename" in
+      *.disabled)
+        echo "Skipping disabled $filename"
+        ;;
+      *.service)
+        echo "Starting $filename... (run-service)"
+        local name=${filename%.service}
+        name=${name#*-}
+        tmux new-window -n "$name" -d "tools/box/run-service $filename $name $part"
+        ;;
+      *.once)
+        echo "Starting $filename... (run-once)"
+        local name=${filename%.once}
+        name=${name#*-}
+        tmux new-window -n "$name" -d "tools/box/run-once $filename $name $part"
+        ;;
+      *.startup)
+        ;;
+      *)
+        echo "Unexpected part: $part, not .service or .once, not disabled"
+        exit 1
+        ;;
+    esac
+  done
+}
+
+cmd_dwim() {
+  if box_running; then
+    cmd_attach
+  else
+    cmd_start
+  fi
+}
+
+cmd_start() {
+  cmd_create
+  cmd_attach
+}
+
+sessions() {
+  tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E '^box(-|$)'
+}
+
+cmd_stop() {
+  # It is important that the whole server is killed, and not individual sessions:
+  # Box passes environment variables through tmux process, so keeping tmux
+  # server alive will cause restarted session to use outdated environment variables.
+  tmux kill-server 2>&1 | grep -E -v "(no server running|No such file or directory)"
+}
+
+cmd_detach() {
+  local name
+  for name in $(sessions); do
+    tmux detach-client -s "$name"
+  done
+}
+
+cmd_destroy() {
+  cmd_stop || :
+  rm -rf "$BOX_DIR"
+}
+
+cmd_attach() {
+  exec tmux attach-session -d -t box
+}
+
+validate_no_args() {
+  if [ "$#" -ne 0 ]; then
+    echo "Unexpected argument '$@', no arguments/options are accepted by 'box $CMD'"
+    exit 2
+  fi
+}
+
+case "$1" in
+    --help)
+	CMD=help;;
+    --*)
+	CMD=;;
+    *)
+	CMD="$1"
+	shift||:;;
+esac
+
+case "$CMD" in
+  create)
+    validate_no_args "$@"
+    cmd_create;;
+  "")
+    validate_no_args "$@"
+    cmd_dwim;;
+  start)
+    validate_no_args "$@"
+    cmd_start;;
+  stop)
+    validate_no_args "$@"
+    cmd_stop;;
+  destroy)
+    validate_no_args "$@"
+    cmd_destroy;;
+  attach)
+    validate_no_args "$@"
+    cmd_attach;;
+  detach)
+    validate_no_args "$@"
+    cmd_detach;;
+  new-window)
+    validate_no_args "$@"
+    exec tmux new-session -t box;;
+  *)
+    usage;;
+esac

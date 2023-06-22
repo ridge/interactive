@@ -1,0 +1,3 @@
+# -*- mode: sh -*-
+
+exec do_something_on_startup

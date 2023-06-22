@@ -1,5 +1,0 @@
-cd ../src/backend
-
-exec ta-gorun backend \
-     --listen=localhost:44445 \
-     --boltdb-file=$TA_DATA_DIR/backend.db

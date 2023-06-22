@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -e
+
+name="$1"
+
+# Called from box-gorun, exact version is passed
+if [ -n "$2" ]; then
+  exedir="$2"
+  exe="$3"
+else
+  exedir="$BOX_RUNTIME_DIR/gorun/$name"
+  # "$name" is repeated here to give a better observability in ps(1) et al
+  exe="$exedir/$(worktree)/$name"
+fi
+
+clean() {
+  # clean is called only if target binary is not found, hence aggressive garbage
+  # collection is fine - we're not going to collect the binary that is going to
+  # be launched.
+  find "$exedir" -mindepth 1 -maxdepth 1 -mmin +10 -exec rm -rf '{}' '+'
+}
+
+build() {
+  local tmpexe="$exe.$$"
+  # Compile using low priority to keep the development computers responsive
+  nice -n19 go build -trimpath -buildvcs=false -gcflags=all="-N -l" -o "$tmpexe" .
+  mv "$tmpexe" "$exe"
+}
+
+if ! [ -x "$exe" ]; then
+  if ! [ -d "$exedir" ]; then
+    rm -rf "$exedir"
+    mkdir -p "$exedir"
+  fi
+  clean
+  build
+fi

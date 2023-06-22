@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+trap '' SIGINT SIGQUIT
+
+log="$1"
+window="$2"
+tmux_window_id=$(tmux list-panes -t "$TMUX_PANE" -F "#{window_id}")
+shift 2
+
+while :; do
+  clear
+  echo "Current directory is $PWD"
+  echo "Running $*"
+  echo
+
+  rm -f "$monitoring_sock"
+  bash -xe "$@" 2>&1 | tee -a "$BOX_LOG_DIR/$log.log" | _build/workspace/bin/log-filter
+  C=${PIPESTATUS[0]}
+
+  #
+  # 100 is a dedicated exit code "exited with intention to restart", used by
+  # e.g. Limestone to indicate that the database version change is detected.
+  #
+  if [[ $C -ne 100 ]]; then
+    color=bg=red
+    if [[ $C -eq 0 ]]; then
+      color=fg=black,bg=yellow
+    fi
+    tmux rename-window -t "$tmux_window_id" "#[$color]$window#[fg=default,bg=default]"
+    echo
+    echo "<<exited with code $C>>"
+    echo
+    read -srp "Press Enter to restart"
+    tmux rename-window -t "$tmux_window_id" "$window"
+  fi
+done

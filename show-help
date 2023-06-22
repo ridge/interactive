@@ -1,16 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-#
-# Let this script continue if user interrupts the application inside
-#
 trap '' SIGINT SIGQUIT
 
 help() {
-  echo "  Welcome to test application for interactive development."
+  echo "  Welcome to Box."
   echo
-  echo "  URL:             http://127.0.0.1:8080/"
-  echo
-  cat static-help.txt
+  cat tools/box/static-help.txt
 }
 
 # Various operating systems set LESS in their rc-files, including such options

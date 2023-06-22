@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+if [ -x "$(command -v curl)" ]; then
+  exec curl --location --show-error --retry 5 "$1"
+elif [ -x "$(command -v wget)" ]; then
+  exec wget --quiet --tries 5 --output-document=- "$1"
+else
+  echo "Need curl or wget" >&2
+  exit 1
+fi
